@@ -25,7 +25,14 @@ jobs:
           test -n "${{ steps.setup.outputs.bin-path }}"
           test -x "${{ steps.setup.outputs.bin-path }}/carne"
           carne --version
+          carne std list
           echo "resolved=${{ steps.setup.outputs.version }} bin=${{ steps.setup.outputs.bin-path }}"
+      - name: Check JS stdlib is usable
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'const {test, expect} = require("std/test"); test("smoke", () => expect(1).toBe(1));' > /tmp/carne-std-smoke.js
+          carne run /tmp/carne-std-smoke.js
 
   arch-override:
     runs-on: macos-15

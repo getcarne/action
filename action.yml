@@ -157,9 +157,17 @@ runs:
         echo "bin-path=${INSTALL_DIR}" >> "$GITHUB_OUTPUT"
         echo "Carne installed to ${INSTALL_DIR}/carne"
 
+    - name: Initialize Carne standard library
+      shell: bash
+      run: |
+        set -euo pipefail
+        export PATH="${{ steps.install.outputs.bin-path }}:${PATH}"
+        carne std init
+
     - name: Verify installation
       shell: bash
       run: |
         set -euo pipefail
         export PATH="${{ steps.install.outputs.bin-path }}:${PATH}"
         carne --version
+        carne std list

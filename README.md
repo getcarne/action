@@ -74,4 +74,7 @@ Use the outputs:
   `carne/.github/workflows/release.yml`).
 - On Linux runners the action installs `libjavascriptcoregtk-4.1-dev` and
   `libssl-dev` via `apt-get`, mirroring the Carne release build.
+- After installing, the action runs `carne std init` so JS stdlib
+  modules (`std/test`, `std/str`, ...) are ready; `carne test` works
+  without an extra step.
 - On Windows the action fails with a clear error.
