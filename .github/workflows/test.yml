@@ -1,0 +1,57 @@
+name: test
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
+        version: [latest, 0.1.2]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        id: setup
+        with:
+          carne-version: ${{ matrix.version }}
+      - name: Check outputs and binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${{ steps.setup.outputs.version }}"
+          test -n "${{ steps.setup.outputs.bin-path }}"
+          test -x "${{ steps.setup.outputs.bin-path }}/carne"
+          carne --version
+          echo "resolved=${{ steps.setup.outputs.version }} bin=${{ steps.setup.outputs.bin-path }}"
+
+  arch-override:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          carne-version: v0.1.2
+          arch: arm64
+      - shell: bash
+        run: carne --version
+
+  windows-fails:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: setup
+        continue-on-error: true
+        uses: ./
+        with:
+          carne-version: 0.1.2
+      - name: Assert clean failure on Windows
+        shell: bash
+        run: |
+          if [ "${{ steps.setup.outcome }}" != "failure" ]; then
+            echo "Expected setup to fail on Windows"
+            exit 1
+          fi
+          echo "Windows correctly rejected"

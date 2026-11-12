@@ -1,0 +1,165 @@
+name: Setup Carne
+description: Install the Carne JavaScript runtime from getcarne/carne releases
+author: Carne
+branding:
+  icon: zap
+  color: orange
+
+inputs:
+  carne-version:
+    description: Carne version to install (e.g. 0.1.2, v0.1.2, or latest)
+    required: false
+    default: latest
+  arch:
+    description: Target architecture (auto, x86_64, x64, amd64, arm64, aarch64)
+    required: false
+    default: auto
+  token:
+    description: GitHub token for release API lookups (defaults to github.token)
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: Resolved Carne version without leading v (e.g. 0.1.2)
+    value: ${{ steps.install.outputs.version }}
+  bin-path:
+    description: Directory containing the carne binary
+    value: ${{ steps.install.outputs.bin-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install system dependencies (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y libjavascriptcoregtk-4.1-dev libssl-dev
+
+    - name: Download and install carne
+      id: install
+      shell: bash
+      env:
+        CARNE_VERSION_INPUT: ${{ inputs.carne-version }}
+        CARNE_ARCH_INPUT: ${{ inputs.arch }}
+        CARNE_GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+
+        # --- OS (Windows is not supported) ---
+        case "${RUNNER_OS:-$(uname -s)}" in
+          Linux) OS="linux" ;;
+          macOS) OS="macos" ;;
+          *)
+            echo "::error::Setup Carne does not support '${RUNNER_OS:-unknown}' (only Linux and macOS runners)"
+            exit 1
+            ;;
+        esac
+
+        # --- Arch ---
+        ARCH_IN="$(echo "${CARNE_ARCH_INPUT:-auto}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+        case "$ARCH_IN" in
+          ""|auto)
+            case "${RUNNER_ARCH:-}" in
+              ARM64) ARCH="arm64" ;;
+              X64) ARCH="x86_64" ;;
+              X86)
+                echo "::error::Setup Carne has no x86 (32-bit) release binary"
+                exit 1
+                ;;
+              *)
+                case "$(uname -m)" in
+                  arm64|aarch64) ARCH="arm64" ;;
+                  x86_64|amd64|x64) ARCH="x86_64" ;;
+                  *)
+                    echo "::error::Cannot detect architecture (RUNNER_ARCH='${RUNNER_ARCH:-}', uname -m='$(uname -m)')"
+                    exit 1
+                    ;;
+                esac
+                ;;
+            esac
+            ;;
+          arm64|aarch64) ARCH="arm64" ;;
+          x86_64|x64|amd64) ARCH="x86_64" ;;
+          *)
+            echo "::error::Unsupported arch '${CARNE_ARCH_INPUT}' (use auto, x86_64, or arm64)"
+            exit 1
+            ;;
+        esac
+
+        # --- Version ---
+        VERSION_IN="$(echo "${CARNE_VERSION_INPUT:-latest}" | tr -d '[:space:]')"
+        if [ -z "$VERSION_IN" ] || [ "$VERSION_IN" = "latest" ] || [ "$VERSION_IN" = "Latest" ] || [ "$VERSION_IN" = "LATEST" ]; then
+          API_URL="https://api.github.com/repos/getcarne/carne/releases/latest"
+          AUTH_ARGS=()
+          if [ -n "${CARNE_GITHUB_TOKEN:-}" ]; then
+            AUTH_ARGS=(-H "Authorization: Bearer ${CARNE_GITHUB_TOKEN}")
+          fi
+          TAG=""
+          if API_BODY="$(curl -fsSL --connect-timeout 15 --retry 3 "${AUTH_ARGS[@]}" "$API_URL" 2>/dev/null)"; then
+            TAG="$(echo "$API_BODY" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+          fi
+          if [ -z "${TAG:-}" ]; then
+            echo "::warning::Could not resolve latest version via API; falling back to releases/latest/download"
+            VERSION="latest"
+          else
+            VERSION="$(echo "$TAG" | sed -E 's/^[vV]//')"
+          fi
+        else
+          VERSION="$(echo "$VERSION_IN" | sed -E 's/^[vV]//')"
+        fi
+
+        if [ -z "${VERSION:-}" ]; then
+          echo "::error::Could not resolve a Carne version from input '${CARNE_VERSION_INPUT}'"
+          exit 1
+        fi
+
+        # --- Download ---
+        ASSET="carne_${OS}-${ARCH}.tar.gz"
+        if [ "$VERSION" = "latest" ]; then
+          URL="https://github.com/getcarne/carne/releases/latest/download/${ASSET}"
+        else
+          URL="https://github.com/getcarne/carne/releases/download/${VERSION}/${ASSET}"
+        fi
+        echo "Installing carne ${VERSION} (${OS}-${ARCH})"
+        echo "Downloading ${URL}"
+
+        : "${RUNNER_TEMP:=${TMPDIR:-/tmp}}"
+        ARCHIVE="${RUNNER_TEMP}/${ASSET}"
+        WORKDIR="${RUNNER_TEMP}/carne-install"
+        rm -rf "$WORKDIR" "$ARCHIVE"
+        mkdir -p "$WORKDIR"
+
+        if ! curl -fsSL --connect-timeout 15 --retry 3 "$URL" -o "$ARCHIVE"; then
+          echo "::error::Failed to download ${URL} (check that version '${VERSION}' and asset '${ASSET}' exist)"
+          exit 1
+        fi
+        if ! tar xzf "$ARCHIVE" -C "$WORKDIR"; then
+          echo "::error::Failed to extract ${ARCHIVE}"
+          exit 1
+        fi
+
+        BIN_SRC="$(find "$WORKDIR" -name carne -type f | head -1 || true)"
+        if [ -z "${BIN_SRC:-}" ]; then
+          echo "::error::No carne binary found in ${ASSET}"
+          exit 1
+        fi
+
+        INSTALL_DIR="${RUNNER_TEMP}/carne-${VERSION}-${OS}-${ARCH}"
+        mkdir -p "$INSTALL_DIR"
+        cp "$BIN_SRC" "${INSTALL_DIR}/carne"
+        chmod +x "${INSTALL_DIR}/carne"
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "bin-path=${INSTALL_DIR}" >> "$GITHUB_OUTPUT"
+        echo "Carne installed to ${INSTALL_DIR}/carne"
+
+    - name: Verify installation
+      shell: bash
+      run: |
+        set -euo pipefail
+        export PATH="${{ steps.install.outputs.bin-path }}:${PATH}"
+        carne --version
