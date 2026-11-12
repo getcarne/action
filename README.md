@@ -1,10 +1,13 @@
 <p align="center">
+  
   <img src="https://github.com/getcarne/carne/blob/main/.github/carne_logo.png" alt="Carne Logo" width="140px" height="140px"><br>
-  <strong>action</strong>, setup <a href="https://github.com/getcarne/carne">Carne</a> in GitHub Actions<br>
-  Installs the Carne JavaScript runtime from <code>getcarne/carne</code> releases on Linux and macOS runners.
+  Setup <a href="https://github.com/getcarne/carne">Carne</a> in GitHub Actions<br>
+  Installs the Carne JavaScript runtime from [getcarne/carne](https://github.com/getcarne/carne) releases on Linux and macOS runners.
+
 </p>
 
-Windows is not supported (Carne publishes no Windows release binary).
+> [!NOTE]
+> Windows is not supported (Carne publishes no Windows release binary).
 
 ## Usage
 
